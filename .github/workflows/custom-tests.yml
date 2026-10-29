@@ -1,0 +1,91 @@
+name: Custom Tests
+
+# Everything that must pass before an image exists. Called by Custom Lint (PRs
+# and feature-branch pushes) and by Custom Build, whose image job `needs:` it —
+# so no image reaches ghcr.io, and nothing can be deployed, without it.
+
+on:
+  workflow_call:
+
+jobs:
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ruff
+        run: pip install ruff==0.6.9
+
+      - name: Lint Python (errors only — F-codes + critical E-codes)
+        run: |
+          # Only flag genuine bugs, not style. Skip upstream files that
+          # already fail under stricter rules.
+          ruff check --select E9,F63,F7,F82 app/ cli/ main.py
+
+      - name: Syntax check all .py files
+        run: |
+          python -m compileall -q app/ cli/ main.py marzban-cli.py 2>&1
+
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install "setuptools<70" -r requirements.txt pytest==8.3.3 httpx==0.27.2
+
+      # Throwaway SQLite + real alembic migrations + a stub Xray binary; see
+      # tests/conftest.py. Includes the Micky protocol vectors shared with the app.
+      - name: pytest
+        run: python -m pytest -q -p no:warnings tests/
+
+  cargo-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stats-collector
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image builds on rust:1-slim-bookworm, i.e. the current stable.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: stats-collector
+
+      # Unit tests of both sidecars; the live-network tests in
+      # stats-collector/tests are #[ignore]d and stay skipped.
+      - name: cargo test
+        run: cargo test --locked
+
+  # The dashboard otherwise only builds on push to custom, after the merge, so
+  # a type error used to surface there. `npm run build` is `tsc && vite build`.
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: app/dashboard/package-lock.json
+
+      - name: Install dashboard deps
+        run: npm ci
+
+      - name: Type-check and build
+        run: VITE_BASE_API=/api/ npm run build

@@ -1,0 +1,29 @@
+name: Custom Lint
+
+on:
+  push:
+    branches-ignore:
+      - custom  # Custom Build runs the same checks (custom-tests.yml) before building
+  pull_request:
+
+jobs:
+  checks:
+    uses: ./.github/workflows/custom-tests.yml
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint workflow YAML with actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          files: '.github/workflows/custom-*.yml'
+
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck deploy/rollback/smoke scripts
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning scripts/*.sh

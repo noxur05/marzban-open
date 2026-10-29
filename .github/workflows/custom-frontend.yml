@@ -1,0 +1,59 @@
+name: Custom Frontend
+
+# Builds the dashboard exactly like custom-build.yml does (same Node
+# version, same build_dashboard.sh-equivalent command, same output
+# layout) but stops at the zip step and uploads the artifact. Use for
+# one-off shipping of the built dashboard without rebuilding the
+# Docker image.
+
+on:
+  workflow_dispatch:
+  # Re-fire when this file itself changes so GitHub indexes new versions
+  # and produces a fresh zip without needing a separate API dispatch.
+  push:
+    branches:
+      - custom
+    paths:
+      - '.github/workflows/custom-frontend.yml'
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: app/dashboard/package-lock.json
+
+      - name: Install dashboard deps
+        working-directory: ./app/dashboard
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: ./app/dashboard
+        run: VITE_BASE_API=/api/ npm run build --if-present -- --outDir build --assetsDir statics
+
+      - name: Create 404.html
+        working-directory: ./app/dashboard
+        run: cp ./build/index.html ./build/404.html
+
+      - name: Zip build output
+        working-directory: ./app/dashboard
+        run: |
+          cd build
+          zip -r ../dashboard-${{ github.sha }}.zip .
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-${{ github.sha }}
+          path: app/dashboard/dashboard-${{ github.sha }}.zip
+          retention-days: 14
+          if-no-files-found: error

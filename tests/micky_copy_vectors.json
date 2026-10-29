@@ -1,0 +1,20 @@
+{
+  "key": "yV9gI__64_ANL0YZF8msw1oF8yGDueQ1y0kwOKfKobs",
+  "aad": "micky-copy",
+  "vectors": [
+    {
+      "name": "ok",
+      "nonce": "U3zL8NAeeXkMAajU",
+      "plaintext": "{\"status\":\"ok\",\"headers\":{\"profile-title\":\"ataha\",\"subscription-userinfo\":\"upload=0; download=1048576; total=10737418240; expire=1767225600\",\"profile-update-interval\":\"2\",\"new-url\":\"micky://s/AwEEBuJE\"},\"body\":\"vless://00000000-0000-0000-0000-000000000000@203.0.113.1:443?security=reality&type=tcp#test\",\"blocked\":[\"id:f2qffD_w-lE2L8FCbjWB5c5vY-Eu1JihkIkdpTxFk4Y\",\"pk:d93Gf-k2dVMKVdlXMGOQZ-VEADY5RMWQp3VBS5S33oo\"],\"issued_at\":1760000000}",
+      "blob": "AVN8y_DQHnl5DAGo1BzwGV_xDcvC9l-wmDU0cHqImSYL6CV4qAMHW0TLnDAsBzd6cmGCPHHFUT_EpT6vIMBqTUH29y4ibel2zUkO2V762JoZb34G7N-hQQ5iChw2Zwx9hQvJ1Fju7rs31VX8zK0e2o4d44ukBp0xG6v51d6-fuF1t2UuGGcsrdT4Lbas4zOT8SSBdkDE41fcQCMrySKDql86qwUQ1k-VL_1WwsM6zhPWE9dr527tTkuiF5Nq8EU8SjNhuLgajcbsXNmBU9p2XyDkVWst6YBsavXS9QBjT2j-HIYulZ3iBQqPt4nHxr3N9L5gIW9RQ2sQ80-myk3e5bSIPuwzpiaKWPOPwSdl9CwyGxWmN8V1JmInr6sduqIh7sPEgMA_jiaHD6VBdZF-zTUSbcXCSXIj01Vm6vXKbpSBzXzIS-C5QWXhwWMX7LqGpg91BzLJl6dYS8WwaobBvBMC4EKGzFFT0xwTYVKV2lA5ya8VyCr2XR356Y5ZgRyjlPdBfTD07qcS_BXKaJjoddZIz4UC1NPPVid82rQxilDnDXZJhw_pHes1AEnv5NXDuTz-tjdtR009hPdPkq1jY_P3mcyXgnwYKFlZguNoZqE8VQ",
+      "firestore_bytesValue": "AVN8y/DQHnl5DAGo1BzwGV/xDcvC9l+wmDU0cHqImSYL6CV4qAMHW0TLnDAsBzd6cmGCPHHFUT/EpT6vIMBqTUH29y4ibel2zUkO2V762JoZb34G7N+hQQ5iChw2Zwx9hQvJ1Fju7rs31VX8zK0e2o4d44ukBp0xG6v51d6+fuF1t2UuGGcsrdT4Lbas4zOT8SSBdkDE41fcQCMrySKDql86qwUQ1k+VL/1WwsM6zhPWE9dr527tTkuiF5Nq8EU8SjNhuLgajcbsXNmBU9p2XyDkVWst6YBsavXS9QBjT2j+HIYulZ3iBQqPt4nHxr3N9L5gIW9RQ2sQ80+myk3e5bSIPuwzpiaKWPOPwSdl9CwyGxWmN8V1JmInr6sduqIh7sPEgMA/jiaHD6VBdZF+zTUSbcXCSXIj01Vm6vXKbpSBzXzIS+C5QWXhwWMX7LqGpg91BzLJl6dYS8WwaobBvBMC4EKGzFFT0xwTYVKV2lA5ya8VyCr2XR356Y5ZgRyjlPdBfTD07qcS/BXKaJjoddZIz4UC1NPPVid82rQxilDnDXZJhw/pHes1AEnv5NXDuTz+tjdtR009hPdPkq1jY/P3mcyXgnwYKFlZguNoZqE8VQ=="
+    },
+    {
+      "name": "refused",
+      "nonce": "jQJ-h5gjrlBdYf6Q",
+      "plaintext": "{\"status\":\"refused\",\"code\":\"expired\",\"message\":\"\",\"blocked\":[],\"issued_at\":1760000100}",
+      "blob": "AY0CfoeYI65QXWH-kFdXuCM9MLWC-WWl9f8my3GKdFeSoYqip1ET33Qf1nN5VDpHK84ZyrCpzKkioAGfOEdtkyEL2Ikijem2sEIuRwB0-227CRFEk5kHAwlgu0kRZ6IMYB-L4vfbZup4a4cZMnbhFmQP8w",
+      "firestore_bytesValue": "AY0CfoeYI65QXWH+kFdXuCM9MLWC+WWl9f8my3GKdFeSoYqip1ET33Qf1nN5VDpHK84ZyrCpzKkioAGfOEdtkyEL2Ikijem2sEIuRwB0+227CRFEk5kHAwlgu0kRZ6IMYB+L4vfbZup4a4cZMnbhFmQP8w=="
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+services:
+  marzban:
+    image: gozargah/marzban:latest
+    restart: always
+    env_file: .env
+    network_mode: host
+    volumes:
+      - /var/lib/marzban:/var/lib/marzban
+
+  # Hourly admin-stats collector — runs the bundled Rust binary from the SAME
+  # image as the panel (one image, per custom-build). The prod deploy seds this
+  # image line to the panel's tag too. Add the same block to the prod compose at
+  # /opt/marzban/docker-compose.yml.
+  stats-collector:
+    image: ghcr.io/noxur05/marzban:custom-latest
+    command: ["/usr/local/bin/marzban-stats-collector"]
+    restart: always
+    env_file: .env
+    network_mode: host
+    environment:
+      - RUST_LOG=info
+
+  # External-subscription poller — mirrors the hosts of subscriptions that live
+  # on OTHER panels into Redis, for admins granted can_use_external_hosts.
+  # Same image as the panel, different binary (one image, per custom-build); the
+  # prod deploy seds this image line to the panel's tag too.
+  #
+  # Reads the panel DB (one SELECT of external_subscriptions) and writes ONLY
+  # Redis, so payloads self-heal one interval after any Redis loss and MySQL
+  # keeps a single writer.
+  subs-poller:
+    image: ghcr.io/noxur05/marzban:custom-latest
+    command: ["/usr/local/bin/marzban-subs-poller"]
+    restart: always
+    env_file: .env
+    network_mode: host
+    environment:
+      - RUST_LOG=info
+
+  # Google copies sync — writes each Micky user's encrypted backup subscription
+  # to Firestore (G1) and Drive (G2), fetching the copy from the panel's
+  # internal endpoint (GET /internal/micky-copy/{id}). Same image as the panel,
+  # different binary; the prod deploy seds this image line to the panel's tag
+  # too. On prod it is added by scripts/ensure-google-sync.sh, only when
+  # /opt/marzban/secrets/google-sa.json exists. Reads GOOGLE_SYNC_SECRET,
+  # FIRESTORE_PROJECT and the GDRIVE_* values from .env; idles with a WARN if
+  # any is missing. One instance at a time (MySQL advisory lock).
+  google-sync:
+    image: ghcr.io/noxur05/marzban:custom-latest
+    command: ["/usr/local/bin/marzban-google-sync"]
+    restart: always
+    env_file: .env
+    network_mode: host
+    environment:
+      - RUST_LOG=info
+      - FIRESTORE_SERVICE_ACCOUNT=/run/secrets/google-sa.json
+    volumes:
+      - type: bind
+        source: /opt/marzban/secrets/google-sa.json
+        target: /run/secrets/google-sa.json
+        read_only: true
+        bind:
+          create_host_path: false
+
+  # Redis cache for the subscription hot path (announcements + device-block).
+  # Ephemeral (no persistence) — caches rebuild from the DB, so it's safe to
+  # lose. Bound to localhost only; the host-networked panel reaches it at
+  # 127.0.0.1:6379 (set REDIS_URL accordingly). The deploy workflow
+  # (scripts/ensure-redis.sh) provisions this on prod idempotently.
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"

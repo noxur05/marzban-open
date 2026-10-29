@@ -1,0 +1,177 @@
+name: Custom Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy: custom-<full 40-char commit sha> from Custom Build'
+        required: true
+      skip_smoke_test:
+        description: 'Skip post-deploy smoke test'
+        type: boolean
+        default: false
+      allow_untested:
+        description: 'Deploy an image whose commit has no green tests (only for images built before tests gated the build, e.g. an old release)'
+        type: boolean
+        default: false
+
+# One deploy at a time: two overlapping runs would race on the compose file,
+# the rollback markers and the cleanup step. A running deploy is never
+# cancelled; at most one more waits (a newer queued run replaces it).
+concurrency:
+  group: custom-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      checks: read  # the tests gate below reads the commit's check runs
+    steps:
+      # Custom Build runs custom-tests.yml as job `tests` before it builds, so a
+      # tested commit carries green check runs "tests / python-lint",
+      # "tests / pytest" and "tests / cargo-test". An image can still exist
+      # without them (built before the gate, or by a manual Custom Build run on
+      # a branch whose workflow predates it), so check the commit itself.
+      - name: Refuse untested images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.image_tag }}
+          ALLOW_UNTESTED: ${{ inputs.allow_untested }}
+        run: |
+          if [[ ! "$TAG" =~ ^custom-[0-9a-f]{40}$ ]]; then
+            echo "::error::image_tag must be custom-<full 40-char commit sha>, got '$TAG'"
+            exit 1
+          fi
+          if [ "$ALLOW_UNTESTED" = "true" ]; then
+            echo "::warning::allow_untested is set: deploying $TAG without checking its tests"
+            exit 0
+          fi
+          sha="${TAG#custom-}"
+          # Newest run per job name (by id: a pending re-run outranks an older success), then all green.
+          gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?per_page=100" --jq '
+            [.check_runs[] | select(.name | startswith("tests / "))]
+            | group_by(.name) | map(max_by(.id))
+            | "\(length) \(map(select(.conclusion == "success")) | length) \(map(.name + "=" + (.conclusion // "pending")) | join(","))"
+          ' > /tmp/tests-status
+          read -r total ok detail < /tmp/tests-status
+          echo "tests for $sha: $ok/$total green ($detail)"
+          if [ "$total" -lt 3 ] || [ "$ok" -ne "$total" ]; then
+            echo "::error::$sha has no complete green 'tests / *' run from Custom Build; refusing to deploy"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pre-flight check
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "docker ps --filter name=marzban-marzban-1 --format '{{.Status}}' | grep -q Up || (echo 'marzban not currently running'; exit 1)"
+
+      # Owner-only (it holds the JWT secret and every token), and written to a
+      # .tmp renamed only on success, so a failed dump never takes one of the
+      # 3 slots scripts/prune-old.sh keeps.
+      - name: Backup database
+        run: |
+          DUMP="/opt/marzban/backup-deploy-$(date +%Y%m%d-%H%M%S).sql"
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "umask 077 && docker exec marzban-mysql-1 sh -c 'mysqldump --single-transaction --routines --triggers -u root --password=\$MYSQL_ROOT_PASSWORD \$MYSQL_DATABASE' > $DUMP.tmp && mv $DUMP.tmp $DUMP && ls -lh $DUMP"
+
+      - name: Pull new image
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "docker pull ghcr.io/noxur05/marzban:${{ inputs.image_tag }}"
+
+      - name: Test migration against fresh backup
+        run: |
+          scp -i ~/.ssh/deploy_key scripts/test-migration.sh \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/test-migration.sh
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash /tmp/test-migration.sh ghcr.io/noxur05/marzban:${{ inputs.image_tag }}"
+
+      # Both halves of "what was running before": the image AND the schema
+      # revision. rollback.sh needs the revision because a migration that drops
+      # anything makes an image-only revert an outage — the old ORM keeps
+      # selecting a column that no longer exists.
+      - name: Save current image tag and schema revision for rollback
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "grep -oE 'image: [^[:space:]]+' /opt/marzban/docker-compose.yml | head -1 | awk '{print \$2}' > /opt/marzban/.previous-image-tag && cat /opt/marzban/.previous-image-tag"
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "docker exec marzban-mysql-1 sh -c 'mysql -u root --password=\$MYSQL_ROOT_PASSWORD \$MYSQL_DATABASE -Nse \"SELECT version_num FROM alembic_version\"' 2>/dev/null | grep -v 'Using a password' | tail -1 > /opt/marzban/.previous-alembic-rev && cat /opt/marzban/.previous-alembic-rev"
+
+      # First step that changes anything on the host. Everything before it —
+      # backup, pull, migration round-trip, saving the rollback tag — is
+      # read-only as far as the running stack is concerned, which is why the
+      # rollback below is gated on this step's output. Without that gate a
+      # failing migration test would "roll back" a deploy that had not happened,
+      # restoring a stale compose backup and DOWNGRADING prod by one release.
+      # Observed exactly that on the b8d4f2c7a913 attempt.
+      - name: Update compose file
+        id: mutate
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "cp /opt/marzban/docker-compose.yml /opt/marzban/docker-compose.yml.bak.\$(date +%Y%m%d-%H%M%S) && sed -i 's|image: .*marzban.*|image: ghcr.io/noxur05/marzban:${{ inputs.image_tag }}|' /opt/marzban/docker-compose.yml && cd /opt/marzban && docker compose config >/dev/null"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Redis cache
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash -s" < scripts/ensure-redis.sh
+
+      - name: Ensure external-subscription poller
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash -s ghcr.io/noxur05/marzban:${{ inputs.image_tag }}" < scripts/ensure-subs-poller.sh
+
+      # Adds itself only when the host has /opt/marzban/secrets/google-sa.json;
+      # without it this step prints a notice and changes nothing.
+      - name: Ensure Google sync service
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash -s ghcr.io/noxur05/marzban:${{ inputs.image_tag }}" < scripts/ensure-google-sync.sh
+
+      - name: Restart marzban
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "marzban restart -n 2>&1 | tail -3"
+
+      - name: Wait for marzban to be healthy
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "for i in \$(seq 1 90); do CODE=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8000/api/admin 2>/dev/null); case \"\$CODE\" in 4*|2*) echo healthy after \${i}s; exit 0;; esac; sleep 1; done; echo 'not healthy in 90s. last logs:'; docker logs --tail 40 marzban-marzban-1 2>&1; exit 1"
+
+      - name: Smoke test
+        if: inputs.skip_smoke_test != true
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash -s" < scripts/smoke-test.sh
+
+      - name: Auto-rollback on failure
+        # Only if the deploy actually got as far as changing the host.
+        if: failure() && steps.mutate.outputs.changed == 'true'
+        run: |
+          echo "::error::Deploy failed — rolling back"
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash -s ghcr.io/noxur05/marzban:${{ inputs.image_tag }}" < scripts/rollback.sh
+
+      # Last, and never fatal: by now the new image runs and the previous one is
+      # the rollback target, both among the 3 newest, and this deploy's dump is
+      # the newest of the 3 kept. A cleanup problem must not fail a good deploy
+      # or trigger the rollback above.
+      - name: Prune old images and backups (keep newest 3)
+        if: success()
+        continue-on-error: true
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash -s 3" < scripts/prune-old.sh

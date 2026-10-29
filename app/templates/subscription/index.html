@@ -1,0 +1,707 @@
+{# ── Marz subscription page — Turkmen ──────────────────────────────── #}
+{# Server-rendered port of the Marz design package. Single file, no JS framework. #}
+
+{% set status_key = user.status.value %}
+{% set status_table = {
+  'active':   ('Işjeň',           'Hasabyňyz işläp dur'),
+  'limited':  ('Çäklendirilen',   'Maglumat çägi gutardy'),
+  'expired':  ('Möhleti gutaran', 'Abonement möhleti tamam'),
+  'disabled': ('Öçürilen',        'Hasap administrator tarapyndan öçürildi'),
+  'on_hold':  ('Garaşmakda',      'Ilkinji birikme bilen başlaýar'),
+} %}
+{% set status_label = status_table[status_key][0] %}
+{% set status_hint  = status_table[status_key][1] %}
+
+{% set reset_words = {
+  'no_reset': 'dikeldilmeýär',
+  'day':      'gün',
+  'week':     'hepde',
+  'month':    'aý',
+  'year':     'ýyl',
+} %}
+{% set reset_strategy = user.data_limit_reset_strategy.value if user.data_limit_reset_strategy else 'no_reset' %}
+{% set show_reset = user.data_limit and reset_strategy != 'no_reset' %}
+
+{# ring math: r=78 → circumference ≈ 490.088 #}
+{% set ring_c = 490.088 %}
+{% if user.data_limit and user.data_limit > 0 %}
+  {% set raw_pct = user.used_traffic / user.data_limit %}
+  {% set ring_pct = raw_pct if raw_pct < 1 else 1 %}
+{% else %}
+  {% set ring_pct = 0 %}
+{% endif %}
+{% set ring_pct_int = (ring_pct * 100) | round | int %}
+{% set ring_offset = ring_c * (1 - ring_pct) %}
+
+{% if user.data_limit and user.data_limit > 0 %}
+  {% set bar_pct = (user.used_traffic / user.data_limit) * 100 %}
+  {% if bar_pct > 100 %}{% set bar_pct = 100 %}{% endif %}
+{% else %}
+  {% set bar_pct = 100 %}
+{% endif %}
+
+{% set days_left = user.expire | days_until %}
+
+{% set tier_labels = {'free': 'Mugt', 'paid': 'Tölegli', 'beta': 'Beta'} %}
+
+{% set platforms = [
+  ('android', 'Android', [
+    {'name':'Happ','tier':'free','channel':'Google Play',
+     'url':'https://play.google.com/store/apps/details?id=com.happproxy',
+     'note':'Resmi müşderi — Google Play'},
+  ]),
+  ('ios', 'iOS', [
+    {'name':'Happ Proxy Utility','tier':'free','channel':'App Store',
+     'url':'https://apps.apple.com/us/app/happ-proxy-utility/id6504287215',
+     'note':'Global App Store'},
+    {'name':'Happ Proxy Utility Plus','tier':'free','channel':'App Store RU',
+     'url':'https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973',
+     'note':'Russia App Store'},
+    {'name':'Happ — TestFlight','tier':'beta','channel':'TestFlight',
+     'url':'https://testflight.apple.com/join/XMls6Ckd',
+     'note':'Beta — global TestFlight'},
+    {'name':'Happ Plus — TestFlight','tier':'beta','channel':'TestFlight',
+     'url':'https://testflight.apple.com/join/1bKEcMub',
+     'note':'Beta — Russia TestFlight'},
+  ]),
+  ('macos', 'macOS', [
+    {'name':'Happ Proxy Utility','tier':'free','channel':'Mac App Store',
+     'url':'https://apps.apple.com/us/app/happ-proxy-utility/id6504287215',
+     'note':'Global Mac App Store'},
+    {'name':'Happ Proxy Utility Plus','tier':'free','channel':'Mac App Store RU',
+     'url':'https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973',
+     'note':'Russia Mac App Store'},
+    {'name':'Happ Desktop','tier':'free','channel':'.dmg',
+     'url':'https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.macOS.universal.dmg',
+     'note':'Göni göçürip alma (universal)'},
+  ]),
+  ('windows', 'Windows', [
+    {'name':'Happ Desktop','tier':'free','channel':'.exe',
+     'url':'https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe',
+     'note':'Windows 64-bit gurnamasy'},
+  ]),
+  ('linux', 'Linux', [
+    {'name':'Happ Desktop','tier':'free','channel':'.deb',
+     'url':'https://github.com/Happ-proxy/happ-desktop/releases/latest/download/Happ.linux.x64.deb',
+     'note':'Debian / Ubuntu paketi'},
+  ]),
+  ('tv', 'TV (Apple TV / Android TV)', [
+    {'name':'Happ for Apple TV','tier':'free','channel':'App Store',
+     'url':'https://apps.apple.com/us/app/happ-proxy-utility-for-tv/id6748297274',
+     'note':'tvOS — Apple TV'},
+    {'name':'Happ','tier':'free','channel':'Google Play',
+     'url':'https://play.google.com/store/apps/details?id=com.happproxy',
+     'note':'Android TV — Google Play'},
+  ]),
+] %}
+
+{% macro platform_icon(p) -%}
+{%- if p == 'android' -%}
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M4 11h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6Z"/>
+  <path d="M7 11V8a5 5 0 0 1 10 0v3"/>
+  <path d="M8 6.5l-1.5-2"/><path d="M16 6.5l1.5-2"/>
+  <circle cx="9" cy="9" r=".6" fill="currentColor" stroke="none"/>
+  <circle cx="15" cy="9" r=".6" fill="currentColor" stroke="none"/>
+</svg>
+{%- elif p == 'ios' -%}
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <rect x="7" y="2.5" width="10" height="19" rx="2.2"/>
+  <line x1="10" y1="5" x2="14" y2="5"/>
+  <circle cx="12" cy="18.5" r=".7" fill="currentColor" stroke="none"/>
+</svg>
+{%- elif p == 'windows' -%}
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+  <rect x="3" y="4" width="8" height="7"/>
+  <rect x="13" y="4" width="8" height="7"/>
+  <rect x="3" y="13" width="8" height="7"/>
+  <rect x="13" y="13" width="8" height="7"/>
+</svg>
+{%- elif p == 'macos' -%}
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <rect x="3" y="4.5" width="18" height="12" rx="1.5"/>
+  <line x1="2" y1="20" x2="22" y2="20"/>
+  <line x1="10" y1="16.5" x2="14" y2="16.5"/>
+</svg>
+{%- elif p == 'linux' -%}
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M9 4.5c0-1 .8-1.8 2-2s3 .5 3 2.2c0 1.5-.4 2.8-.4 3.8 0 1.4 1.8 2.5 2.8 4.5s1.6 4.5 1.6 6"/>
+  <path d="M15 4.5c0-1-.8-1.8-2-2"/>
+  <path d="M10 8.5c-1.5 1-2.6 2.3-3.4 3.8C5.4 14.6 5 17.2 5 19"/>
+  <path d="M6 20h12"/>
+  <circle cx="11" cy="6" r=".7" fill="currentColor" stroke="none"/>
+  <circle cx="13" cy="6" r=".7" fill="currentColor" stroke="none"/>
+</svg>
+{%- elif p == 'tv' -%}
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <rect x="3" y="4.5" width="18" height="12" rx="1.5"/>
+  <line x1="8" y1="20" x2="16" y2="20"/>
+  <line x1="12" y1="16.5" x2="12" y2="20"/>
+</svg>
+{%- endif -%}
+{%- endmacro %}
+
+<!DOCTYPE html>
+<html lang="tk" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Hasap maglumatlary</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+
+  <style>
+    :root {
+      --accent: oklch(0.66 0.16 290);
+      --warn:   oklch(0.78 0.16 75);
+      --danger: oklch(0.66 0.20 25);
+      --ok:     oklch(0.72 0.15 155);
+      --r-card: 14px;
+      --r-tile: 12px;
+      --r-pill: 999px;
+    }
+    :root[data-theme="dark"] {
+      --bg:         oklch(0.155 0.008 270);
+      --bg-elev:    oklch(0.19  0.010 270);
+      --bg-card:    oklch(0.215 0.010 270);
+      --bg-card-2:  oklch(0.235 0.012 270);
+      --line:       oklch(0.30  0.012 270);
+      --line-soft:  oklch(0.255 0.010 270);
+      --fg:         oklch(0.97  0.005 270);
+      --fg-muted:   oklch(0.74  0.010 270);
+      --fg-dim:     oklch(0.56  0.010 270);
+      --ring-track: oklch(0.27  0.010 270);
+    }
+    :root[data-theme="light"] {
+      --bg:         oklch(0.985 0.004 270);
+      --bg-elev:    oklch(1 0 0);
+      --bg-card:    oklch(1 0 0);
+      --bg-card-2:  oklch(0.985 0.004 270);
+      --line:       oklch(0.91  0.008 270);
+      --line-soft:  oklch(0.945 0.006 270);
+      --fg:         oklch(0.22  0.010 270);
+      --fg-muted:   oklch(0.46  0.010 270);
+      --fg-dim:     oklch(0.62  0.010 270);
+      --ring-track: oklch(0.92  0.006 270);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      font-feature-settings: "ss01", "cv11";
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      letter-spacing: -0.005em;
+    }
+    .mono {
+      font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      font-feature-settings: "ss01", "tnum";
+      letter-spacing: 0;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .page { max-width: 1100px; margin: 0 auto; padding: 28px 28px 80px; }
+
+    /* topbar */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0 24px; border-bottom: 1px solid var(--line-soft); gap: 16px;
+    }
+    .topbar-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .topbar-eyebrow {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--fg-dim);
+    }
+    .topbar-name {
+      font-size: 18px; font-weight: 600; color: var(--fg);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* status pill */
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 7px 14px; border-radius: var(--r-pill);
+      font-size: 13px; font-weight: 600;
+      border: 1px solid transparent; flex: none;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+      box-shadow: 0 0 0 4px color-mix(in oklab, currentColor 22%, transparent);
+    }
+    .status-active   { color: var(--ok);     background: color-mix(in oklab, var(--ok)     14%, transparent); border-color: color-mix(in oklab, var(--ok)     30%, transparent); }
+    .status-limited  { color: var(--danger); background: color-mix(in oklab, var(--danger) 14%, transparent); border-color: color-mix(in oklab, var(--danger) 30%, transparent); }
+    .status-expired  { color: var(--warn);   background: color-mix(in oklab, var(--warn)   14%, transparent); border-color: color-mix(in oklab, var(--warn)   30%, transparent); }
+    .status-disabled { color: var(--fg-dim); background: color-mix(in oklab, var(--fg-dim) 12%, transparent); border-color: var(--line); }
+    .status-on_hold  { color: var(--accent); background: color-mix(in oklab, var(--accent) 14%, transparent); border-color: color-mix(in oklab, var(--accent) 30%, transparent); }
+
+    /* overview */
+    .overview {
+      display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: center;
+      padding: 40px 32px; margin-top: 24px;
+      border: 1px solid var(--line); border-radius: 20px;
+      background:
+        radial-gradient(60% 100% at 100% 50%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 70%),
+        var(--bg-card);
+    }
+    .overview-left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .overview-eyebrow {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--fg-dim);
+    }
+    .overview-hint {
+      font-size: clamp(20px, 2.4vw, 28px); font-weight: 500;
+      letter-spacing: -0.02em; line-height: 1.2;
+      color: var(--fg); text-wrap: pretty; max-width: 28ch;
+    }
+    .overview-meta {
+      display: flex; gap: 28px; flex-wrap: wrap;
+      margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line-soft);
+    }
+    .overview-meta-item { display: flex; flex-direction: column; gap: 3px; }
+    .overview-meta-k {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.10em;
+      text-transform: uppercase; color: var(--fg-dim);
+    }
+    .overview-meta-v { font-size: 14px; color: var(--fg); font-weight: 500; }
+
+    /* usage ring */
+    .usage-ring { position: relative; width: 200px; height: 200px; flex: none; }
+    .usage-ring svg { display: block; width: 100%; height: 100%; }
+    .ring-track { fill: none; stroke: var(--ring-track); stroke-width: 10; }
+    .ring-fill  { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; }
+    .ring-center {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; padding: 12px;
+    }
+    .ring-big {
+      font-size: 46px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; color: var(--fg);
+    }
+    .ring-pct { font-size: 20px; color: var(--fg-muted); margin-left: 1px; font-weight: 500; }
+    .ring-sub { font-size: 12px; color: var(--fg-muted); margin-top: 8px; letter-spacing: 0.01em; }
+
+    /* stats grid */
+    .stats {
+      display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 14px; margin-top: 14px;
+    }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--line);
+      border-radius: var(--r-card); padding: 22px;
+      display: flex; flex-direction: column;
+    }
+    .card-eyebrow {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+      color: var(--fg-dim); margin-bottom: 18px; font-weight: 600;
+    }
+    .data-rows { display: flex; flex-direction: column; gap: 0; }
+    .data-row {
+      display: flex; align-items: baseline; justify-content: space-between;
+      padding: 11px 0; border-bottom: 1px solid var(--line-soft); gap: 12px;
+    }
+    .data-row:last-of-type { border-bottom: none; }
+    .data-row-k { color: var(--fg-muted); font-size: 13.5px; }
+    .data-row-v { font-size: 16px; font-weight: 600; color: var(--fg); }
+    .data-bar {
+      height: 6px; background: var(--ring-track); border-radius: var(--r-pill);
+      margin-top: 16px; overflow: hidden;
+    }
+    .data-bar-fill { height: 100%; border-radius: var(--r-pill); background: var(--accent); }
+    .data-bar-fill.unlimited { opacity: 0.35; }
+    .data-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .data-meta-chip {
+      font-size: 11.5px; padding: 5px 10px; border-radius: var(--r-pill);
+      background: var(--bg-card-2); border: 1px solid var(--line-soft);
+      color: var(--fg-muted);
+    }
+    .data-meta-chip.muted { color: var(--fg-dim); }
+
+    /* expiry */
+    .expiry-card { justify-content: space-between; min-height: 100%; }
+    .expiry-big {
+      font-size: clamp(48px, 7vw, 64px); font-weight: 600; line-height: 1;
+      letter-spacing: -0.03em; color: var(--fg); margin: 4px 0 0;
+    }
+    .expiry-big.warn   { color: var(--warn); }
+    .expiry-big.danger { color: var(--danger); }
+    .expiry-sub  { color: var(--fg-muted); font-size: 13.5px; margin-top: 8px; }
+    .expiry-date {
+      margin-top: 20px; padding-top: 14px; font-size: 12.5px;
+      color: var(--fg-dim); border-top: 1px solid var(--line-soft);
+    }
+
+    /* tiles */
+    .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+    .tile {
+      background: var(--bg-card); border: 1px solid var(--line);
+      border-radius: var(--r-tile); padding: 16px 18px;
+      display: flex; flex-direction: column; gap: 6px;
+      min-height: 96px; min-width: 0;
+    }
+    .tile-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.10em;
+      color: var(--fg-dim); font-weight: 600;
+    }
+    .tile-value {
+      font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+      line-height: 1.25; color: var(--fg);
+    }
+    .tile-unit { font-size: 13px; color: var(--fg-muted); font-weight: 500; }
+    .tile-sub {
+      font-size: 11.5px; color: var(--fg-dim); margin-top: auto;
+      line-height: 1.4; overflow: hidden; text-overflow: ellipsis;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    }
+
+    /* next plan */
+    .next-plan {
+      margin-top: 14px; padding: 20px 22px;
+      border: 1px solid var(--line); border-radius: var(--r-card);
+      background:
+        radial-gradient(80% 60% at 0% 0%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 60%),
+        var(--bg-card);
+    }
+    .next-plan-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px; }
+    .next-plan-dot {
+      width: 8px; height: 8px; border-radius: 50%; margin-top: 8px; flex: none;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
+    }
+    .next-plan-title { font-size: 15px; font-weight: 600; color: var(--fg); }
+    .next-plan-body  { font-size: 13px; color: var(--fg-muted); margin-top: 3px; }
+    .next-plan-grid {
+      display: flex; gap: 32px; flex-wrap: wrap; align-items: center;
+      padding-top: 16px; border-top: 1px solid var(--line-soft);
+    }
+    .np-k {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.10em;
+      color: var(--fg-dim); font-weight: 600; margin-bottom: 5px;
+    }
+    .np-v    { font-size: 17px; font-weight: 600; color: var(--fg); }
+    .np-flag { font-size: 12.5px; color: var(--fg-muted); }
+
+    /* apps */
+    .apps { margin-top: 64px; }
+    .apps-head { margin-bottom: 18px; }
+    .apps-title {
+      font-size: clamp(22px, 2.4vw, 26px);
+      font-weight: 600; letter-spacing: -0.02em; margin: 0;
+    }
+    .apps-subtitle {
+      color: var(--fg-muted); margin: 6px 0 0; font-size: 14px; max-width: 60ch;
+    }
+    .instructions {
+      list-style: none; padding: 16px 22px; margin: 0 0 26px;
+      background: var(--bg-card-2); border: 1px solid var(--line-soft);
+      border-radius: var(--r-card);
+      display: flex; gap: 28px; flex-wrap: wrap;
+    }
+    .instructions li {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--fg-muted);
+    }
+    .instr-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: color-mix(in oklab, var(--accent) 18%, transparent);
+      color: var(--accent); font-weight: 700; font-size: 12px;
+      display: grid; place-items: center; flex: none;
+    }
+    .platforms { display: flex; flex-direction: column; gap: 24px; }
+    .platform-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 12px; color: var(--fg);
+    }
+    .platform-name {
+      font-size: 13.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase;
+    }
+    .platform-apps {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px;
+    }
+    .app-card {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-tile);
+      background: var(--bg-card);
+      transition: border-color .15s ease, background .15s ease, transform .15s ease;
+    }
+    .app-card:hover {
+      border-color: color-mix(in oklab, var(--accent) 50%, var(--line));
+      background: var(--bg-card-2);
+      transform: translateY(-1px);
+    }
+    .app-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .app-name { font-weight: 600; font-size: 14.5px; color: var(--fg); }
+    .app-tier {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+      font-weight: 700; padding: 3px 8px; border-radius: var(--r-pill); flex: none;
+    }
+    .app-tier-free { background: color-mix(in oklab, var(--ok)     16%, transparent); color: var(--ok); }
+    .app-tier-paid { background: color-mix(in oklab, var(--warn)   16%, transparent); color: var(--warn); }
+    .app-tier-beta { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); }
+    .app-channel { font-size: 11.5px; color: var(--fg-dim);   letter-spacing: 0.02em; }
+    .app-note    { font-size: 12.5px; color: var(--fg-muted); margin-top: 4px; line-height: 1.4; }
+    .app-cta {
+      margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--accent);
+    }
+
+    /* footer */
+    .footer {
+      margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line-soft);
+      display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      font-size: 12px; color: var(--fg-dim);
+    }
+
+    @media (max-width: 900px) {
+      .overview { grid-template-columns: 1fr; gap: 28px; padding: 28px 24px; }
+      .overview-right { display: flex; justify-content: center; }
+      .stats { grid-template-columns: 1fr; }
+      .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 600px) {
+      .page { padding: 22px 18px 60px; }
+      .topbar { flex-direction: column; align-items: flex-start; gap: 14px; }
+      .tiles { grid-template-columns: 1fr; }
+      .platform-apps { grid-template-columns: 1fr; }
+      .instructions { padding: 14px 16px; gap: 14px; flex-direction: column; }
+      .usage-ring { width: 176px; height: 176px; }
+      .ring-big { font-size: 38px; }
+      .overview-meta { gap: 18px; }
+      .next-plan-grid { gap: 18px; }
+    }
+    @media (max-width: 380px) {
+      .page { padding: 18px 14px 48px; }
+      .card, .overview { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    {# ── topbar ───────────────────────────────────────────── #}
+    <header class="topbar">
+      <div class="topbar-title">
+        <span class="topbar-eyebrow">Hasabyňyz</span>
+        <span class="topbar-name mono">{{ user.username | e }}</span>
+      </div>
+      <div class="status-pill status-{{ status_key }}">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="status-label">{{ status_label }}</span>
+      </div>
+    </header>
+
+    {# ── hero overview ────────────────────────────────────── #}
+    <section class="overview">
+      <div class="overview-left">
+        <div class="overview-eyebrow">Ýagdaýy</div>
+        <div class="overview-hint">{{ status_hint }}</div>
+        <div class="overview-meta">
+          <div class="overview-meta-item">
+            <span class="overview-meta-k">Hasap döredildi</span>
+            <span class="overview-meta-v mono">{{ user.created_at | tkdate }}</span>
+          </div>
+          <div class="overview-meta-item">
+            <span class="overview-meta-k">Soňky işjeňlik</span>
+            <span class="overview-meta-v mono">
+              {% if user.online_at %}{{ user.online_at | tkrelative }}{% else %}Henize ýok{% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="overview-right">
+        <div class="usage-ring">
+          <svg viewBox="0 0 200 200" width="200" height="200" aria-hidden="true">
+            <circle cx="100" cy="100" r="78" class="ring-track"/>
+            {% if user.data_limit %}
+            <circle cx="100" cy="100" r="78" class="ring-fill"
+                    stroke-dasharray="{{ '%.3f'|format(ring_c) }}"
+                    stroke-dashoffset="{{ '%.3f'|format(ring_offset) }}"
+                    transform="rotate(-90 100 100)"/>
+            {% endif %}
+          </svg>
+          <div class="ring-center">
+            {% if not user.data_limit %}
+              <div class="ring-big mono">∞</div>
+              <div class="ring-sub">Çäksiz</div>
+            {% else %}
+              <div class="ring-big mono">{{ ring_pct_int }}<span class="ring-pct">%</span></div>
+              <div class="ring-sub">
+                {{ user.used_traffic | bytesformat }} / {{ user.data_limit | bytesformat }}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {# ── stats: data + expiry ─────────────────────────────── #}
+    <section class="stats">
+      <div class="card data-card">
+        <div class="card-eyebrow">Maglumat ulanylyşy</div>
+        <div class="data-rows">
+          <div class="data-row">
+            <span class="data-row-k">Ulanylan</span>
+            <span class="data-row-v mono">{{ user.used_traffic | bytesformat }}</span>
+          </div>
+          <div class="data-row">
+            <span class="data-row-k">Galan</span>
+            <span class="data-row-v mono">
+              {% if user.data_limit %}{{ (user.data_limit - user.used_traffic) | bytesformat if user.data_limit > user.used_traffic else '0 B' }}{% else %}∞{% endif %}
+            </span>
+          </div>
+          <div class="data-row">
+            <span class="data-row-k">Jemi</span>
+            <span class="data-row-v mono">
+              {% if user.data_limit %}{{ user.data_limit | bytesformat }}{% else %}Çäksiz{% endif %}
+            </span>
+          </div>
+          <div class="data-bar">
+            <div class="data-bar-fill {% if not user.data_limit %}unlimited{% endif %}"
+                 style="width: {{ '%.2f'|format(bar_pct) }}%;"></div>
+          </div>
+          <div class="data-meta">
+            {% if show_reset %}
+            <span class="data-meta-chip">
+              ↻ Her {{ reset_words[reset_strategy] }} gaýtadan dikeldilýär
+            </span>
+            {% endif %}
+            <span class="data-meta-chip muted">
+              Tutuş wagtda: <span class="mono">{{ user.lifetime_used_traffic | bytesformat }}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card expiry-card">
+        <div class="card-eyebrow">Möhleti</div>
+        {% if not user.expire %}
+          <div class="expiry-big">∞</div>
+          <div class="expiry-sub">Hiç haçan gutarmaýar</div>
+        {% elif days_left > 0 %}
+          <div class="expiry-big mono">{{ days_left }}</div>
+          <div class="expiry-sub">gün galdy</div>
+          <div class="expiry-date mono">{{ user.expire | tkdate }}</div>
+        {% elif days_left == 0 %}
+          <div class="expiry-big warn">!</div>
+          <div class="expiry-sub">Şu gün gutarýar</div>
+          <div class="expiry-date mono">{{ user.expire | tkdate }}</div>
+        {% else %}
+          <div class="expiry-big danger mono">{{ days_left | abs }}</div>
+          <div class="expiry-sub">gün öň gutardy</div>
+          <div class="expiry-date mono">{{ user.expire | tkdate }}</div>
+        {% endif %}
+      </div>
+    </section>
+
+    {# ── secondary tiles ──────────────────────────────────── #}
+    <section class="tiles">
+      <div class="tile">
+        <span class="tile-label">Birikdirilen enjamlar</span>
+        <span class="tile-value">
+          <span class="mono">{{ user.device_count }}</span>
+          <span class="tile-unit">enjam</span>
+        </span>
+        {% if user.sub_last_user_agent %}
+        <span class="tile-sub">Soňky programma: {{ user.sub_last_user_agent | e }}</span>
+        {% endif %}
+      </div>
+      <div class="tile">
+        <span class="tile-label">Soňky täzelenme</span>
+        <span class="tile-value">
+          {% if user.sub_updated_at %}{{ user.sub_updated_at | tkrelative }}{% else %}Henize ýok{% endif %}
+        </span>
+        {% if user.sub_updated_at %}
+        <span class="tile-sub mono">{{ user.sub_updated_at | tkdatetime }}</span>
+        {% endif %}
+      </div>
+      <div class="tile">
+        <span class="tile-label">Tutuş wagtda</span>
+        <span class="tile-value mono">{{ user.lifetime_used_traffic | bytesformat }}</span>
+      </div>
+    </section>
+
+    {# ── next plan ────────────────────────────────────────── #}
+    {% if user.next_plan %}
+    <section class="next-plan">
+      <div class="next-plan-head">
+        <div class="next-plan-dot"></div>
+        <div>
+          <div class="next-plan-title">Indiki meýilnama nobatda</div>
+          <div class="next-plan-body">Häzirki meýilnamaňyz gutaranda awtomatiki başlar.</div>
+        </div>
+      </div>
+      <div class="next-plan-grid">
+        <div>
+          <div class="np-k">Täze çäk</div>
+          <div class="np-v mono">
+            {% if user.next_plan.data_limit %}{{ user.next_plan.data_limit | bytesformat }}{% else %}Çäksiz{% endif %}
+          </div>
+        </div>
+        <div>
+          <div class="np-k">Gutarýar</div>
+          <div class="np-v mono">
+            {% if user.next_plan.expire %}{{ user.next_plan.expire | tkdate }}{% else %}—{% endif %}
+          </div>
+        </div>
+        {% if user.next_plan.add_remaining_traffic %}
+        <div class="np-flag">✓ Galan maglumat goşulýar</div>
+        {% endif %}
+        {% if user.next_plan.fire_on_either %}
+        <div class="np-flag">✓ Çäk ýa-da möhlet — haýsy ozal gutarsa</div>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {# ── apps ─────────────────────────────────────────────── #}
+    <section class="apps">
+      <div class="apps-head">
+        <h2 class="apps-title">Maslahat berilýän programmalar</h2>
+        <p class="apps-subtitle">Abonementi açmak üçin platformaňyza laýyk programmany guruň</p>
+      </div>
+
+      <ol class="instructions">
+        <li><span class="instr-num">1</span><span>Aşakdaky programmalardan birini guruň</span></li>
+        <li><span class="instr-num">2</span><span>Abonement salgyňyzy göçüriň</span></li>
+        <li><span class="instr-num">3</span><span>Programmada "abonement goş" düwmesine basyp salgyny goýuň</span></li>
+      </ol>
+
+      <div class="platforms">
+        {% for p_key, p_label, p_apps in platforms %}
+        <div class="platform-block">
+          <div class="platform-head">
+            {{ platform_icon(p_key) }}
+            <span class="platform-name">{{ p_label }}</span>
+          </div>
+          <div class="platform-apps">
+            {% for app in p_apps %}
+            <a class="app-card" href="{{ app.url | e }}" target="_blank" rel="noreferrer noopener">
+              <div class="app-card-top">
+                <span class="app-name">{{ app.name | e }}</span>
+                <span class="app-tier app-tier-{{ app.tier }}">{{ tier_labels[app.tier] }}</span>
+              </div>
+              {% if app.channel %}<div class="app-channel mono">{{ app.channel | e }}</div>{% endif %}
+              <div class="app-note">{{ app.note | e }}</div>
+              <div class="app-cta">
+                Programmany aç
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 17 17 7"/><path d="M8 7h9v9"/>
+                </svg>
+              </div>
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="footer-note">Bu sahypa diňe siziň üçin döredildi. Salgyny hiç kim bilen paýlaşmaň.</div>
+      <div class="footer-brand">Hyzmat üpjünçiligi · Micky</div>
+    </footer>
+  </div>
+</body>
+</html>

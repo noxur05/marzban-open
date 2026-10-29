@@ -1,0 +1,70 @@
+[package]
+name = "marzban-stats-collector"
+version = "0.1.0"
+edition = "2021"
+description = "Sidecars for the Micky/Marzban panel: hourly admin-usage collector, external-subscription poller, Google copies sync"
+license = "AGPL-3.0"
+publish = false
+
+# Three independent long-running services, built from one crate so they share a
+# dependency set, one Cargo.lock and one Docker build stage. They run as
+# SEPARATE containers off the same image (see docker-compose.yml): the release
+# profile sets panic = "abort", so sharing a process would let a panic in one
+# take the others down with it.
+[lib]
+name = "marzban_stats_collector"
+path = "src/lib.rs"
+
+[[bin]]
+name = "marzban-stats-collector"
+path = "src/main.rs"
+
+[[bin]]
+name = "marzban-subs-poller"
+path = "src/bin/subs-poller.rs"
+
+[[bin]]
+name = "marzban-google-sync"
+path = "src/bin/google-sync.rs"
+
+[dependencies]
+tokio = { version = "1", features = [
+    "macros",
+    "rt-multi-thread",
+    "time",
+    "signal",
+    "net",   # DNS resolution for hosts given as domains
+    "sync",  # Semaphore, to bound concurrent remote fetches
+] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio-rustls",
+    "mysql",
+    "chrono",
+    "bigdecimal",
+] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# --- subs-poller only ---
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "charset",
+    "http2",
+] }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
+serde_json = "1"
+base64 = "0.22"
+percent-encoding = "2"
+rand = "0.8"
+# --- google-sync only ---
+# RS256 for the service-account JWT. Already in the tree (rustls signs TLS with
+# it, default features included), so this adds no crate and no build time.
+ring = "0.17"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
